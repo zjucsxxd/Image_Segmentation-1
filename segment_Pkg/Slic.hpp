@@ -20,12 +20,14 @@ struct LabPointInfo{
 	double lVal;
 	double aVal;
 	double bVal;
+	int label;
+	double distance;
 	LabPointInfo(double l, double a, double b) : lVal(l), aVal(a), bVal(b) {}
 };
 
 class Slic{
 	int rowNum, colNum;
-	Mat image, labImage;
+	Mat image, labImage, grayImage;
 	tr1::unordered_map<int, tr1::unordered_map<int, LabPointInfo *> > labImageMatrix;
 
 public:
@@ -34,6 +36,7 @@ public:
 		rowNum = image.rows;
 		colNum = image.cols;
 		cvtColor(this->image, this->labImage, CV_BGR2Lab);
+		cvtColor(this->image, this->grayImage, CV_BGR2GRAY);
 		readLabImage();
 	}
 
@@ -46,13 +49,30 @@ public:
 	}
 
 	void cluster(int k){
+		cout << this->rowNum << ", " << this->colNum << endl;
 		int rowSeg = 1, colSeg = 1;
 		if(isPrime(k))
 			(this->rowNum > this->colNum) ? (rowSeg = k) : (colSeg = k);
 		else
 			decomNum(k, rowSeg, colSeg);
 
-		cout << rowSeg << ", " << colSeg << endl;
+		double rowPos = this->rowNum / rowSeg / 2;
+		for(int i = 0; i < rowSeg; i++){
+			double colPos = this->colNum / colSeg / 2;
+			for(int j = 0; j < colSeg; j++){
+				int coorVal[] = {rowPos, colPos};
+				adjustCenter(coorVal);
+				markCenter(coorVal);
+				colPos += this->colNum / colSeg;
+			}
+			rowPos += this->rowNum / rowSeg;
+		}
+		cout << rowSeg * colSeg << endl;
+
+		namedWindow("Lena", CV_WINDOW_AUTOSIZE);
+		imshow("Lena", image);
+		waitKey(0);
+		destroyWindow("Lena");
 	}
 
 private:
@@ -64,6 +84,8 @@ private:
 						this->labImage.at<Vec3b>(i, j)[1] - 128,
 						this->labImage.at<Vec3b>(i, j)[2] - 128};
 				LabPointInfo *labPointInfo = new LabPointInfo(labVal[0], labVal[1], labVal[2]);
+				labPointInfo->label = -1;
+				labPointInfo->distance = DBL_MAX;
 				newMap.insert(pair<int, LabPointInfo *>(j, labPointInfo));
 			}
 			this->labImageMatrix.insert(pair<int, tr1::unordered_map<int, LabPointInfo *> >(i, newMap));
@@ -100,5 +122,43 @@ private:
 			rowSeg = iniVal, colSeg = number / iniVal;
 		else
 			colSeg = iniVal, rowSeg = number / iniVal;
+	}
+
+	void adjustCenter(int coorVal[]){
+		int newCoorVal[] = {coorVal[0]- 1, coorVal[1] - 1};
+		int diff = 0, markPos[] = {newCoorVal[0], newCoorVal[1]};
+		for(int i = 0; i < 3; i++){
+			newCoorVal[0] += i;
+			newCoorVal[1] = coorVal[1] - 1;
+			for(int j = 0; j < 3; j++){
+				newCoorVal[1] += j;
+				if((int)grayImage.at<uchar>(newCoorVal[0], newCoorVal[1])
+						- (int)grayImage.at<uchar>(coorVal[0], coorVal[1]) > diff){
+					diff = ((int)grayImage.at<uchar>(newCoorVal[0], newCoorVal[1])
+							- (int)grayImage.at<uchar>(coorVal[0], coorVal[1]));
+					markPos[0] = newCoorVal[0];
+					markPos[1] = newCoorVal[1];
+				}
+			}
+		}
+		if(coorVal[0] == markPos[0] || coorVal[1] == markPos[1])
+			cout << "Unchanged" << endl;
+		else
+			cout << "Changed" << endl;
+		coorVal[0] = markPos[0];
+		coorVal[1] = markPos[1];
+	}
+
+	// Auxiliary functions.
+	void markCenter(int coorVal[]){
+		coorVal[0] -= 2;
+		coorVal[1] -= 2;
+		for(int i = 0; i < 4; i++){
+			for(int j = 0; j < 4; j++){
+				this->image.at<Vec3b>(coorVal[0] + i, coorVal[1] + j)[0] = 255;
+				this->image.at<Vec3b>(coorVal[0] + i, coorVal[1] + j)[1] = 255;
+				this->image.at<Vec3b>(coorVal[0] + i, coorVal[1] + j)[2] = 255;
+			}
+		}
 	}
 };
